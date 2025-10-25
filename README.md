@@ -109,11 +109,60 @@ Para mais informações, consulte a documentação: https://jestjs.io/docs/getti
 * Realizar a cobertura de testes.
 
 ### Anotações
-Iniciar projeto react com o `npm create vite@latest`, eu estava fazendo o projeto com o vite, mas o professor estava fazendo com o create-react-app, acabei optando por refazer do começo para ficar igual como está na aula os comandos.
+Nesta aula trabalhamos testes de componentes React usando Jest + React Testing Library.
 
-Uma das coisas ruins dessa aula é que ela está bastante desatualizada, seria bom se tivesse sendo feito com o vite ou outro mais moderno. 
+1. Iniciar projeto
+   - Você pode usar Create React App (CRA) ou Vite. O fluxo de criação é diferente entre eles, por isso o projeto gerado pode variar.
+   - Com Vite prefira Vitest (mais integrado). Com CRA vem Jest configurado por padrão.
 
-Nós apagamos a estrutura inical do projeto e constriomos uma lista de tarefas com o useState, depois disso começamos a fazer os testes no app.test.js
+2. Estrutura do exercício
+   - Construímos um componente <App /> com useState para gerenciar uma lista de tarefas.
+   - O componente tem um input (data-testid="campo-tarefa"), um botão (data-testid="btn-cadastrar") e uma lista (<ul>) que mostra as tarefas.
+
+3. Testes básicos
+   - Teste de renderização:
+     - render(<App />)
+     - Verificar presença do botão: expect(screen.getByRole('button', { name: /cadastrar/i })).toBeInTheDocument()
+     - getByText('cadastrar') também funciona, mas getByRole é mais robusto para acessibilidade.
+   - Teste de interação:
+     - Simular mudança no input e clique no botão:
+       - fireEvent.change(screen.getByTestId('campo-tarefa'), { target: { value: 'estudar React' } })
+       - fireEvent.click(screen.getByTestId('btn-cadastrar'))
+       - Verificar se o item aparece: expect(screen.getByText('estudar React')).toBeInTheDocument()
+
+4. Debug
+   - É possível inspecionar o HTML renderizado:
+     - const { debug } = render(<App />)
+     - debug() exibe o DOM atual no console durante os testes.
+
+5. Boas práticas
+   - Prefira queries centradas no usuário: getByRole, getByLabelText, getByPlaceholderText, getByText.
+   - Use data-testid apenas quando não houver outra query mais acessível.
+   - Agrupe testes relacionados com describe().
+
+6. Cobertura de testes
+   - Com Jest (CRA): npm run test -- --coverage
+   - Com Vitest: npx vitest --coverage
+   - O relatório geralmente fica em coverage/lcov-report/index.html — abra no navegador para ver detalhes.
+   - Meta realista: ~70% é comum em exercícios/parte do app; objetivo depende do contexto do projeto.
+
+7. Observações sobre diferenças CRA x Vite
+   - CRA já configura Jest e setupTests.js por padrão.
+   - Em Vite o fluxo recomendado é usar Vitest e criar manualmente o setup de testes (por exemplo src/setupTests.js).
+   - Se seguir a gravação do professor (CRA), adapte comandos se estiver usando Vite/Vitest.
+
+Exemplo rápido de teste (resumido):
+```js
+import { render, screen, fireEvent } from '@testing-library/react'
+import App from './App'
+
+test('adiciona tarefa na lista', () => {
+  render(<App />)
+  fireEvent.change(screen.getByTestId('campo-tarefa'), { target: { value: 'estudar React' } })
+  fireEvent.click(screen.getByTestId('btn-cadastrar'))
+  expect(screen.getByText('estudar React')).toBeInTheDocument()
+})
+```
 
 
 
@@ -121,9 +170,122 @@ Nós apagamos a estrutura inical do projeto e constriomos uma lista de tarefas c
 
 ## Aula 4 - Faça testes com React e Redux
 ### Objetivos
-
+* Realizar teste em aplicação já existente;
+* Criar função para renderizar componente no Redux;
+* Encapsular usando o provider;
+* Realizar debugs para localizar os erros;
+* Usar função omit para omitir propriedades;
+* Praticar o uso de argumento preloadedState.
 
 ### Anotações
+Nesta aula aprendemos a testar componentes que dependem do Redux. O fluxo principal foi:
+
+1. Problema inicial
+   - Componentes que usam useSelector/useDispatch precisam de um Provider com a store durante os testes.
+   - Em CRA o Jest já vem configurado; em outros setups (Vite) é preciso configurar o ambiente de testes manualmente.
+
+2. Arquivo de setup dos testes
+   - Criar src/setupTests.ts (ou setupTests.js) e adicionar:
+     ```ts
+     import '@testing-library/jest-dom'
+     ```
+     Isso garante que os matchers extras (toBeInTheDocument, etc.) sejam reconhecidos.
+
+3. Estratégia adotada
+   - Criamos uma função utilitária renderizaComProvider que:
+     - Recebe o elemento React a ser renderizado.
+     - Aceita preloadedState (estado inicial do Redux) e uma store opcional.
+     - Encapsula o componente no <Provider store={store}> e repassa outras opções para o render da Testing Library.
+     - Retorna o resultado do render e a store usada (útil para asserts ou dispatchs no teste).
+
+4. Implementação recomendada (exemplo)
+   - Arquivo sugerido: src/utils/tests.tsx
+     ```tsx
+     // filepath: /src/utils/tests.tsx
+     import React from 'react'
+     import { render, RenderOptions } from '@testing-library/react'
+     import { Provider } from 'react-redux'
+     import { configureStore } from '@reduxjs/toolkit'
+     import { PreloadedState } from '@reduxjs/toolkit'
+     import rootReducer from '../store/rootReducer' // ajuste conforme seu projeto
+     import type { RootState, AppStore } from '../store' // tipos do seu projeto
+
+     interface ExtendedRenderOptions extends Omit<RenderOptions, 'queries'> {
+       preloadedState?: PreloadedState<RootState>
+       store?: AppStore
+     }
+
+     export function configuraStore(preloadedState?: PreloadedState<RootState>) {
+       return configureStore({
+         reducer: rootReducer,
+         preloadedState,
+       })
+     }
+
+     export function renderizaComProvider(
+       ui: React.ReactElement,
+       {
+         preloadedState,
+         store = configuraStore(preloadedState),
+         ...renderOptions
+       }: ExtendedRenderOptions = {}
+     ) {
+       function Wrapper({ children }: { children?: React.ReactNode }) {
+         return <Provider store={store}>{children}</Provider>
+       }
+
+       return { store, ...render(ui, { wrapper: Wrapper, ...renderOptions }) }
+     }
+     ```
+     - Ajuste imports (rootReducer, tipos) para sua estrutura.
+     - Retornar a store permite, por exemplo, despachar ações diretamente no teste.
+
+5. Tipos úteis (TypeScript)
+   - Defina RootState e AppDispatch na configuração da store:
+     ```ts
+     // filepath: /src/store/index.ts
+     import { configureStore } from '@reduxjs/toolkit'
+     import rootReducer from './rootReducer'
+
+     export const store = configureStore({ reducer: rootReducer })
+
+     export type RootState = ReturnType<typeof store.getState>
+     export type AppDispatch = typeof store.dispatch
+     export type AppStore = typeof store
+     ```
+   - Na função configuraStore, use o tipo PreloadedState<RootState>.
+
+6. Exemplo de uso em teste (Header)
+   ```tsx
+   import { screen } from '@testing-library/react'
+   import Header from '..'
+   import { renderizaComProvider } from '../../../utils/tests'
+
+   test('renderiza com 2 itens no carrinho', () => {
+     renderizaComProvider(<Header />, {
+       preloadedState: {
+         carrinho: {
+           itens: [
+             { id: 1, categoria: 'RPG', imagem: '', plataformas: ['Windows'], preco: 150.9, precoAntigo: 199.9, titulo: 'The Legend of EBAC' },
+             { id: 2, categoria: 'Aventura', imagem: '', plataformas: ['Windows', 'PlayStation'], preco: 79.9, precoAntigo: 99.9, titulo: 'React Masterclass' }
+           ]
+         }
+       }
+     })
+
+     expect(screen.getByTestId('qtd-carrinho').textContent).toContain('2 itens')
+   })
+   ```
+
+7. Observações e boas práticas
+   - Use preloadedState apenas para o que for necessário ao teste (não popula todo o estado).
+   - Evite depender demais de detalhes de implementação do reducer — prefira testar o comportamento visível no DOM.
+   - Se precisar de actions assíncronas ou thunks, é possível despachar ações na store retornada pelo renderizaComProvider.
+   - Mantenha o utils/tests.tsx simples: ele apenas provê o Provider e repassa opções para o render.
+   - Se vários testes compartilharem preloadedState semelhantes, crie geradores/factories para os estados (ex.: makeCartWithItems(2)).
+
+Com isso você consegue replicar localmente o mesmo fluxo do professor, manipulando a store via preloadedState e isolando cenários de teste para componentes conectados ao Redux.
+
 
 
 ## Aula 5 - Teste o componente de produto
